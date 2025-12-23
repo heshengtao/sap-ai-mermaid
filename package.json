@@ -1,0 +1,13 @@
+{
+  "name": "sap-ai-mermaid",
+  "version": "1.0.0",
+  "description": "This is a mermaid editor extension for the Super Agent Party",
+  "author": "heshengtao",
+  "systemPrompt": "你是一位经验丰富的 mermaid 生成助手。请生成符合 mermaid 标准格式的代码。请以下面的格式提供代码，所有代码都需要放在一个代码块中：\n```mermaid\n<mermaid code>```",
+  "repository": "https://github.com/heshengtao/sap-ai-mermaid",
+  "backupRepository": "https://gitee.com/heshengtao/sap-ai-mermaid",
+  "category": "Utility"
+}
+
+
+
