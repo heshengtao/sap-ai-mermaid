@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mermaid AI Editor Pro</title>
+<title>Mermaid AI Editor Pro (Offline)</title>
 <style>
 :root {
   --primary: #2563eb;
@@ -55,7 +55,6 @@ main { flex: 1; display: flex; overflow: hidden; }
 
 .pane-preview {
   flex: 1;
-  /* 默认背景，会被 JS 动态修改 */
   background-color: #f1f5f9;
   background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
   background-size: 20px 20px;
@@ -119,8 +118,14 @@ main { flex: 1; display: flex; overflow: hidden; }
   font-family: monospace;
 }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+
+<!-- 1. 引入 Ace Editor (也可以下载到本地) -->
+<script src="ace.js"></script>
+<!-- 2. 引入 svg-pan-zoom (也可以下载到本地) -->
+<script src="svg-pan-zoom.min.js"></script>
+<!-- 3. 【关键修改】引入本地的 Mermaid 单文件 -->
+<script src="../../js/mermaid.min.js"></script>
+
 </head>
 <body>
 
@@ -165,36 +170,38 @@ main { flex: 1; display: flex; overflow: hidden; }
   <div id="sandbox" style="position:fixed; top:-9999px; left:-9999px; visibility:hidden;"></div>
 </div>
 
-<script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+<!-- 【关键修改】不再使用 type="module"，普通的 script 标签即可 -->
+<script>
+/* 
+   注意：现在 mermaid 是全局变量 window.mermaid
+   不再需要 import mermaid from ...
+*/
 
-/* ========== 1. 导出模块 (修复裁剪) ========== */
+/* ========== 1. 导出模块 ========== */
 window.exporter = {
   async getCleanSVG() {
     const rawSvg = document.querySelector('#graph-inner svg');
     if (!rawSvg) return null;
     const clone = rawSvg.cloneNode(true);
     
-    // 移除 pan-zoom 容器
     const viewport = clone.querySelector('.svg-pan-zoom_viewport');
     if (viewport) {
         const children = Array.from(viewport.childNodes);
         children.forEach(child => clone.appendChild(child));
         clone.removeChild(viewport);
     }
-    // 强制清理样式
     clone.removeAttribute('style');
     clone.removeAttribute('class');
     clone.removeAttribute('width');
     clone.removeAttribute('height');
-    // 根据当前主题决定导出的背景色
+    
     const isDark = currentTheme === 'dark';
     clone.style.backgroundColor = isDark ? '#1a1a1a' : '#ffffff';
 
     const sandbox = document.getElementById('sandbox');
     sandbox.innerHTML = '';
     sandbox.appendChild(clone);
-    await new Promise(r => setTimeout(r, 10)); // 等待渲染
+    await new Promise(r => setTimeout(r, 10));
     
     const bbox = clone.getBBox(); 
     const padding = 20;
@@ -230,7 +237,6 @@ window.exporter = {
       canvas.width = data.width * scale;
       canvas.height = data.height * scale;
       const ctx = canvas.getContext('2d');
-      // 填充背景 (防止 PNG 透明)
       ctx.fillStyle = (currentTheme === 'dark') ? '#1a1a1a' : '#ffffff';
       ctx.fillRect(0,0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -252,7 +258,7 @@ window.exporter = {
   }
 };
 
-/* ========== 2. UI逻辑与主题管理 ========== */
+/* ========== 2. UI与主题 ========== */
 const editor = ace.edit("ace-editor");
 editor.setTheme("ace/theme/chrome");
 editor.session.setMode("ace/mode/markdown");
@@ -263,16 +269,14 @@ editor.renderer.setShowGutter(false);
 let panZoom = null;
 let currentTheme = 'default';
 
-// 背景色映射
 const themeBgMap = {
   default: '#f1f5f9',
   neutral: '#f4f4f4',
-  dark: '#1a1a1a',    // 深色模式背景
+  dark: '#1a1a1a',
   forest: '#e8f5e9',
   base: '#ffffff'
 };
 
-// 挂载到 window 供 HTML 调用
 window.ui = {
   toastVal: document.getElementById('status-toast'),
   errorLog: document.getElementById('error-log'),
@@ -291,8 +295,7 @@ window.ui = {
   reset() { if(panZoom) { panZoom.resetZoom(); panZoom.center(); } }
 };
 
-/* ========== 3. 渲染核心 (修复主题切换) ========== */
-// 基础配置
+/* ========== 3. 渲染核心 ========== */
 const baseConfig = {
   startOnLoad: false,
   securityLevel: 'loose',
@@ -300,7 +303,7 @@ const baseConfig = {
   gantt: { axisFormat: '%m/%d/%Y' }
 };
 
-// 初始化一次
+// 全局 mermaid 对象已由 mermaid.min.js 提供
 mermaid.initialize({ ...baseConfig, theme: currentTheme });
 
 async function render(code) {
@@ -308,22 +311,14 @@ async function render(code) {
   window.ui.errorLog.style.display = 'none';
   
   try {
-    // 1. 预检查语法
     await mermaid.parse(code); 
     
-    // 2. 关键：重新初始化 Mermaid 配置
-    // 必须传入一个新的对象，确保 theme 被应用
-    mermaid.initialize({ 
-        ...baseConfig, 
-        theme: currentTheme 
-    });
+    mermaid.initialize({ ...baseConfig, theme: currentTheme });
     
-    // 3. 渲染
     const id = 'mermaid-' + Date.now();
     const { svg } = await mermaid.render(id, code);
     window.ui.container.innerHTML = svg;
     
-    // 4. 处理样式和缩放
     const svgEl = window.ui.container.querySelector('svg');
     svgEl.style.width = '100%';
     svgEl.style.height = '100%';
@@ -339,9 +334,7 @@ async function render(code) {
       maxZoom: 10
     });
     
-    // 5. 更新预览区背景色 (解决 dark 模式看不清的问题)
     window.ui.previewPane.style.backgroundColor = themeBgMap[currentTheme] || '#f1f5f9';
-    // 更新网格点的颜色（可选，微调）
     if(currentTheme === 'dark') {
        window.ui.previewPane.style.backgroundImage = 'radial-gradient(#444 1px, transparent 1px)';
     } else {
@@ -356,7 +349,6 @@ async function render(code) {
   }
 }
 
-// 监听编辑器输入
 let timer;
 editor.session.on('change', () => {
   if(timer) clearTimeout(timer);
@@ -367,16 +359,14 @@ editor.session.on('change', () => {
   }, 500);
 });
 
-// 监听主题切换
 document.getElementById('theme-select').onchange = (e) => {
   currentTheme = e.target.value;
-  // 立即触发重绘
   const val = editor.getValue();
   const code = extractCode(val);
   if(code) render(code);
 };
 
-/* ========== 4. 数据处理 ========== */
+/* ========== 4. 工具函数 ========== */
 function extractCode(text) {
   if(!text) return '';
   const match = text.match(/```mermaid\s*([\s\S]*?)```/);
@@ -389,10 +379,13 @@ function extractCode(text) {
   return '';
 }
 
-/* ========== 5. WebSocket ========== */
+/* ========== 5. WebSocket (带容错) ========== */
 let ws;
 function initWs() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // 如果是 file:// 打开，没有 host，直接跳过连接
+  if(location.protocol === 'file:') return;
+  
   ws = new WebSocket(`${proto}//${location.host}/ws`);
   ws.onopen = () => ws.send(JSON.stringify({type:'get_messages'}));
   ws.onmessage = (e) => {
