@@ -119,11 +119,11 @@ main { flex: 1; display: flex; overflow: hidden; }
 }
 </style>
 
-<!-- 1. 引入 Ace Editor (也可以下载到本地) -->
+<!-- 1. 引入 Ace Editor -->
 <script src="ace.js"></script>
-<!-- 2. 引入 svg-pan-zoom (也可以下载到本地) -->
+<!-- 2. 引入 svg-pan-zoom -->
 <script src="svg-pan-zoom.min.js"></script>
-<!-- 3. 【关键修改】引入本地的 Mermaid 单文件 -->
+<!-- 3. 引入 Mermaid -->
 <script src="mermaid.min.js"></script>
 
 </head>
@@ -170,11 +170,9 @@ main { flex: 1; display: flex; overflow: hidden; }
   <div id="sandbox" style="position:fixed; top:-9999px; left:-9999px; visibility:hidden;"></div>
 </div>
 
-<!-- 【关键修改】不再使用 type="module"，普通的 script 标签即可 -->
 <script>
 /* 
    注意：现在 mermaid 是全局变量 window.mermaid
-   不再需要 import mermaid from ...
 */
 
 /* ========== 1. 导出模块 ========== */
@@ -303,7 +301,6 @@ const baseConfig = {
   gantt: { axisFormat: '%m/%d/%Y' }
 };
 
-// 全局 mermaid 对象已由 mermaid.min.js 提供
 mermaid.initialize({ ...baseConfig, theme: currentTheme });
 
 async function render(code) {
@@ -373,21 +370,37 @@ function extractCode(text) {
   if(match) return match[1].trim();
   const openMatch = text.match(/```mermaid\s*([\s\S]*)/);
   if(openMatch) return openMatch[1].trim();
-  if(text.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|gantt|pie|gitGraph)/)) {
-    return text.trim();
-  }
-  return '';
+  return text.trim();
 }
 
-/* ========== 5. WebSocket (带容错) ========== */
+/* ========== 5. WebSocket (带容错 & 自动提示词) ========== */
 let ws;
+
+// [新增] 定义 Mermaid 专用的系统提示词
+const MERMAID_SYSTEM_PROMPT = "你是一位经验丰富的 mermaid 生成助手。请生成符合 mermaid 标准格式的代码。请以下面的格式提供代码，所有代码都需要放在一个代码块中：\n```mermaid\n<mermaid code>```";
+
 function initWs() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   // 如果是 file:// 打开，没有 host，直接跳过连接
   if(location.protocol === 'file:') return;
   
   ws = new WebSocket(`${proto}//${location.host}/ws`);
-  ws.onopen = () => ws.send(JSON.stringify({type:'get_messages'}));
+  
+  ws.onopen = () => {
+    console.log('WS Connected');
+    
+    // [关键修改] 连接成功后，立即发送系统提示词
+    ws.send(JSON.stringify({
+      type: 'set_system_prompt',
+      data: {
+        text: MERMAID_SYSTEM_PROMPT
+      }
+    }));
+
+    // 获取历史消息
+    ws.send(JSON.stringify({type:'get_messages'}));
+  };
+
   ws.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -396,7 +409,11 @@ function initWs() {
       }
     } catch(err){}
   };
-  ws.onclose = () => setTimeout(initWs, 2000);
+  
+  ws.onclose = () => {
+      console.log('WS Closed, retrying...');
+      setTimeout(initWs, 2000);
+  };
 }
 
 let lastCode = '';
@@ -423,4 +440,3 @@ initWs();
 </script>
 </body>
 </html>
-
