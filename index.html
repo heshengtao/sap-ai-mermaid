@@ -373,10 +373,7 @@ function extractCode(text) {
   if(match) return match[1].trim();
   const openMatch = text.match(/```mermaid\s*([\s\S]*)/);
   if(openMatch) return openMatch[1].trim();
-  if(text.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|gantt|pie|gitGraph)/)) {
-    return text.trim();
-  }
-  return '';
+  return text.trim();
 }
 
 /* ========== 5. WebSocket (带容错) ========== */
@@ -423,4 +420,5 @@ initWs();
 </script>
 </body>
 </html>
+
 
